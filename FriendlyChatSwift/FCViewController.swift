@@ -70,7 +70,9 @@ class FCViewController: UIViewController, UINavigationControllerDelegate {
     }
     
     func configureDatabase() {
-        // TODO: configure database to sync messages
+        // TODO: Create database reference
+        
+        ref = FIRDatabase.database().reference()
     }
     
     func configureStorage() {
@@ -110,6 +112,8 @@ class FCViewController: UIViewController, UINavigationControllerDelegate {
             messageTextField.delegate = self
             
             // TODO: Set up app to send and receive messages when signed in
+            
+            configureDatabase()
         }
     }
     
@@ -122,6 +126,13 @@ class FCViewController: UIViewController, UINavigationControllerDelegate {
     
     func sendMessage(data: [String:String]) {
         // TODO: create method that pushes message to the firebase database
+        
+        // Addd message with a unique key
+        var mdata = data
+        
+        // Assign a name to the message data
+        mdata[Constants.MessageFields.name] = displayName
+        ref.child("messages").childByAutoId().setValue(mdata)
     }
     
     func sendPhotoMessage(photoData: Data) {
@@ -271,7 +282,11 @@ extension FCViewController: UITextFieldDelegate {
     
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         if !textField.text!.isEmpty {
+            
+            // Create a data dictionary to hold message
             let data = [Constants.MessageFields.text: textField.text! as String]
+            
+            // pass data
             sendMessage(data: data)
             textField.resignFirstResponder()
         }
