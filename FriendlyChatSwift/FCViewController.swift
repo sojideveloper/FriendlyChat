@@ -33,7 +33,12 @@ class FCViewController: UIViewController, UINavigationControllerDelegate {
     var keyboardOnScreen = false
     var placeholderImage = UIImage(named: "ic_account_circle")
     fileprivate var _refHandle: FIRDatabaseHandle!
+    
+    // Authentication properties
+    // Gives us the ability to specify what we want to
+    // happen when authorization state changes
     fileprivate var _authHandle: FIRAuthStateDidChangeListenerHandle!
+    
     var user: FIRUser?
     var displayName = "Anonymous"
     
@@ -53,7 +58,8 @@ class FCViewController: UIViewController, UINavigationControllerDelegate {
     // MARK: Life Cycle
     
     override func viewDidLoad() {
-        self.signedInStatus(isSignedIn: true)
+        
+        configureAuth()
         
         // TODO: Handle what users see when view loads
     }
@@ -67,12 +73,44 @@ class FCViewController: UIViewController, UINavigationControllerDelegate {
     
     func configureAuth() {
         // TODO: configure firebase authentication
+        
+        // Set the auth handle by using a FiRAuth instance...
+        _authHandle = FIRAuth.auth()?.addStateDidChangeListener({ (auth, user) in
+            
+            // Refresh table data
+            self.messages.removeAll(keepingCapacity: false)
+            self.messagesTable.reloadData()
+            
+            // Check if there is a current user
+            if let activeUser = user {
+                // Check if the current app user is the current FIRUser
+                if self.user != activeUser {
+                    self.user = activeUser
+                    self.signedInStatus(isSignedIn: true)
+                    let name = user!.email!.components(separatedBy: "@")[0]
+                    self.displayName = name
+                }
+                
+            } else {
+                // user must sign in
+                self.signedInStatus(isSignedIn: false)
+                self.loginSession()
+            }
+        })
+        
     }
     
     func configureDatabase() {
         // TODO: Create database reference
         
         ref = FIRDatabase.database().reference()
+        
+        // Create listener for syncing new messages
+        _refHandle = ref.child("messages").observe(.childAdded, with: { (snapshot) in
+            self.messages.append(snapshot)
+            self.messagesTable.insertRows(at: [IndexPath(row: self.messages.count - 1, section: 0)], with: .automatic)
+            self.scrollToBottomMessage()
+        })
     }
     
     func configureStorage() {
@@ -80,7 +118,9 @@ class FCViewController: UIViewController, UINavigationControllerDelegate {
     }
     
     deinit {
-        // TODO: set up what needs to be deinitialized when view is no longer being used
+
+        // Remove observer/listener to avoid excess memory usage
+        ref.child("messages").removeObserver(withHandle: _refHandle)
     }
     
     // MARK: Remote Config
@@ -212,6 +252,16 @@ extension FCViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         // dequeue cell
         let cell: UITableViewCell! = messagesTable.dequeueReusableCell(withIdentifier: "messageCell", for: indexPath)
+        
+        // Unpack message from firebase data snapshot
+        let messageSnapshot: FIRDataSnapshot! = messages[indexPath.row]
+        let message = messageSnapshot.value as! [String : String]
+        let name = message[Constants.MessageFields.name] ?? "[username]"
+        let text = message[Constants.MessageFields.text] ?? "[message]"
+        
+        cell!.textLabel?.text = name + ": " + text
+        cell!.imageView?.image = self.placeholderImage
+        
         return cell!
         // TODO: update cell to display message data
     }
@@ -230,6 +280,7 @@ extension FCViewController: UITableViewDelegate, UITableViewDataSource {
         dismissImageRecognizer.isEnabled = true
         dismissKeyboardRecognizer.isEnabled = false
         messageTextField.isEnabled = false
+        
         UIView.animate(withDuration: 0.25) {
             self.backgroundBlur.effect = UIBlurEffect(style: .light)
             self.imageDisplay.alpha = 1.0
